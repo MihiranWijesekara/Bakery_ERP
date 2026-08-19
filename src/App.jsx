@@ -6,7 +6,6 @@ import { Dashboard } from "./pages/Dashboard";
 import { Inventory } from "./pages/Inventory";
 import { Production } from "./pages/Production";
 import { Purchasing } from "./pages/Purchasing";
-import { Sales } from "./pages/Sales";
 import { QualityControl } from "./pages/QualityControl";
 import { Settings } from "./pages/Settings";
 import { Reports } from "./pages/Reports";
@@ -19,16 +18,17 @@ function App() {
     Inventory: "materials",
     Production: "runs",
     Purchasing: "orders",
-    Sales: "orders",
     "Quality Control": "logs",
     Settings: "profile",
     Reports: "overview",
   });
   const [productionWizardOpen, setProductionWizardOpen] = useState(false);
   const [purchaseWizardOpen, setPurchaseWizardOpen] = useState(false);
-  const [salesWizardOpen, setSalesWizardOpen] = useState(false);
   const [productModalOpen, setProductModalOpen] = useState(false);
   const [supplierModalOpen, setSupplierModalOpen] = useState(false);
+  const [supplierChooseModalOpen, setSupplierChooseModalOpen] = useState(false);
+  const [companyVendorModalOpen, setCompanyVendorModalOpen] = useState(false);
+  const [personVendorModalOpen, setPersonVendorModalOpen] = useState(false);
 
   useEffect(() => {
     if (!user) {
@@ -36,9 +36,11 @@ function App() {
       setActivePage("Dashboard");
       setProductionWizardOpen(false);
       setPurchaseWizardOpen(false);
-      setSalesWizardOpen(false);
       setProductModalOpen(false);
       setSupplierModalOpen(false);
+      setSupplierChooseModalOpen(false);
+      setCompanyVendorModalOpen(false);
+      setPersonVendorModalOpen(false);
     }
   }, [user]);
 
@@ -62,12 +64,6 @@ function App() {
     if (action === "purchase") {
       goToPage("Purchasing");
       setPurchaseWizardOpen(true);
-      return;
-    }
-
-    if (action === "sales") {
-      goToPage("Sales");
-      setSalesWizardOpen(true);
       return;
     }
 
@@ -113,17 +109,14 @@ function App() {
             setSubActiveTab={setCurrentSubTab}
             isWizardOpen={purchaseWizardOpen}
             setIsWizardOpen={setPurchaseWizardOpen}
-            isSupplierModalOpen={supplierModalOpen}
-            setIsSupplierModalOpen={setSupplierModalOpen}
-          />
-        );
-      case "Sales":
-        return (
-          <Sales
-            subActiveTab={currentSubTab}
-            setSubActiveTab={setCurrentSubTab}
-            isWizardOpen={salesWizardOpen}
-            setIsWizardOpen={setSalesWizardOpen}
+            isNewSupplierOpen={supplierModalOpen}
+            setIsNewSupplierOpen={setSupplierModalOpen}
+            isNewSupplierChooseOpen={supplierChooseModalOpen}
+            setIsNewSupplierChooseOpen={setSupplierChooseModalOpen}
+            iscompanyVendorOpen={companyVendorModalOpen}
+            setIscompanyVendorOpen={setCompanyVendorModalOpen}
+            isPersonVendorOpen={personVendorModalOpen}
+            setIsPersonVendorOpen={setPersonVendorModalOpen}
           />
         );
       case "Quality Control":

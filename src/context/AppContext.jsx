@@ -104,6 +104,26 @@ const initialRawMaterials = [
     category: "Dry Ingredients",
     expiryDate: "2026-09-20",
   }, // Low stock!
+  {
+    id: "rm_onion",
+    name: "Onion",
+    stock: 60,
+    unit: "kg",
+    minStock: 15,
+    cost: 1.1,
+    category: "Fillings",
+    expiryDate: "2026-09-10",
+  },
+  {
+    id: "rm_tomato",
+    name: "Tomato",
+    stock: 45,
+    unit: "kg",
+    minStock: 10,
+    cost: 1.4,
+    category: "Fillings",
+    expiryDate: "2026-09-05",
+  },
 ];
 
 const initialProducts = [
@@ -795,8 +815,7 @@ export const AppProvider = ({ children }) => {
 
   // Auth Operations
   const login = (email, password, rememberMe = true) => {
-    const storedPassword =
-      localStorage.getItem("erp_password") || "admin123";
+    const storedPassword = localStorage.getItem("erp_password") || "admin123";
     if (email === "admin@bakery.com" && password === storedPassword) {
       const savedProfile = localStorage.getItem("erp_user_profile");
       const profile = savedProfile
@@ -815,7 +834,11 @@ export const AppProvider = ({ children }) => {
       } else {
         localStorage.removeItem("erp_remember_email");
       }
-      showToast("Login Successful", `Welcome back, ${loggedUser.name.split(" ")[0]}!`, "success");
+      showToast(
+        "Login Successful",
+        `Welcome back, ${loggedUser.name.split(" ")[0]}!`,
+        "success",
+      );
       return true;
     }
     return false;
@@ -842,8 +865,7 @@ export const AppProvider = ({ children }) => {
   };
 
   const updatePassword = (currentPassword, newPassword) => {
-    const storedPassword =
-      localStorage.getItem("erp_password") || "admin123";
+    const storedPassword = localStorage.getItem("erp_password") || "admin123";
     if (currentPassword !== storedPassword) {
       showToast("Password Error", "Current password is incorrect.", "danger");
       return false;

@@ -1,0 +1,8 @@
+* ---  Raw material stock page ---- * 
+category coloum eka remove karanna
+Expiray date eka remove karanna
+remove the status
+
+
+* --- Raw material page -- * 
+Add the mesurement 

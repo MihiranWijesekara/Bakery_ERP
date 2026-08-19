@@ -1,7 +1,7 @@
 import React, { useState, useContext, useEffect, useRef } from 'react';
 import { AppContext } from '../context/AppContext';
 import { 
-  FiHome, FiDatabase, FiCpu, FiShoppingCart, FiDollarSign, FiCheckSquare, 
+  FiHome, FiDatabase, FiCpu, FiShoppingCart, FiCheckSquare, 
   FiPieChart, FiSettings, FiMenu, FiChevronLeft, FiChevronRight, FiSun, 
   FiMoon, FiBell, FiSearch, FiLogOut, FiUser, FiCalendar, FiClock, FiStar,
   FiHelpCircle
@@ -76,7 +76,6 @@ export const Layout = ({ children, activePage, setActivePage, setSubActiveTab })
           case 'i': navigateTo('Inventory'); break;
           case 'p': navigateTo('Production'); break;
           case 'u': navigateTo('Purchasing'); break;
-          case 's': navigateTo('Sales'); break;
           case 'q': navigateTo('Quality Control'); break;
           case 'r': navigateTo('Reports'); break;
           case 't': navigateTo('Settings'); break;
@@ -103,7 +102,7 @@ export const Layout = ({ children, activePage, setActivePage, setSubActiveTab })
       ...productionLogs.filter(p => p.id.toLowerCase().includes(query))
     ].slice(0, 4);
 
-    const erpPages = ['Dashboard', 'Inventory', 'Production', 'Purchasing', 'Sales', 'Quality Control', 'Reports', 'Settings'];
+    const erpPages = ['Dashboard', 'Inventory', 'Production', 'Purchasing', 'Quality Control', 'Reports', 'Settings'];
     const matchedPages = erpPages.filter(p => p.toLowerCase().includes(query)).slice(0, 3);
 
     return {
@@ -124,7 +123,6 @@ export const Layout = ({ children, activePage, setActivePage, setSubActiveTab })
     { name: 'Inventory', icon: <FiDatabase />, category: 'Operations' },
     { name: 'Production', icon: <FiCpu />, category: 'Operations' },
     { name: 'Purchasing', icon: <FiShoppingCart />, category: 'Finance & Supply' },
-    { name: 'Sales', icon: <FiDollarSign />, category: 'Finance & Supply' },
     { name: 'Quality Control', icon: <FiCheckSquare />, category: 'Operations' },
     { name: 'Reports', icon: <FiPieChart />, category: 'Core' },
     { name: 'Settings', icon: <FiSettings />, category: 'Core' }

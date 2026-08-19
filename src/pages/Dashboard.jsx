@@ -3,7 +3,7 @@ import { AppContext } from '../context/AppContext';
 import { BarChart, DonutChart, LineChart, Sparkline } from '../components/Charts';
 import { 
   FiPackage, FiTrendingUp, FiActivity, FiShoppingCart, FiUsers, FiDollarSign,
-  FiCheckCircle, FiAlertCircle, FiClipboard, FiClock, FiPlusCircle, FiTruck,
+  FiCheckCircle, FiAlertCircle, FiClipboard, FiClock, FiPlusCircle,
   FiCalendar, FiFileText, FiFilter
 } from 'react-icons/fi';
 
@@ -59,7 +59,6 @@ export const Dashboard = ({ setActivePage, setSubActiveTab, setQuickActionOpen }
   // Sales Metrics
   const totalSalesVal = salesOrders.reduce((acc, curr) => acc + curr.totalAmount, 0);
   const completedSalesVal = salesOrders.filter(s => s.status === 'Completed').reduce((acc, curr) => acc + curr.totalAmount, 0);
-  const pendingDeliveries = salesOrders.filter(s => s.status === 'Processing' || s.status === 'Pending').length;
 
   // Quality metrics
   const totalQCInspected = qualityLogs.reduce((acc, curr) => acc + curr.quantityInspected, 0);
@@ -162,20 +161,6 @@ export const Dashboard = ({ setActivePage, setSubActiveTab, setQuickActionOpen }
       icon: <FiShoppingCart />,
       page: 'Purchasing',
     },
-    {
-      key: 'deliveries',
-      variant: 'cyan',
-      label: 'Pending Deliveries',
-      value: pendingDeliveries,
-      badge: `${salesOrders.filter(s => s.status === 'Processing').length} Packing`,
-      badgeType: 'cyan',
-      sub: 'Sales shipments',
-      trend: 'up',
-      spark: [1, 2, 1, 3, 2, 2, pendingDeliveries],
-      color: '#06b6d4',
-      icon: <FiTruck />,
-      page: 'Sales',
-    },
   ];
 
   return (
@@ -242,10 +227,6 @@ export const Dashboard = ({ setActivePage, setSubActiveTab, setQuickActionOpen }
           <div className="quick-action-btn" onClick={() => setQuickActionOpen('purchase')}>
             <span className="quick-action-btn-icon" style={{ color: 'var(--warning)' }}><FiPlusCircle /></span>
             <span className="quick-action-btn-label">Create Purchase</span>
-          </div>
-          <div className="quick-action-btn" onClick={() => setQuickActionOpen('sales')}>
-            <span className="quick-action-btn-icon" style={{ color: 'var(--success)' }}><FiPlusCircle /></span>
-            <span className="quick-action-btn-label">Create Sales Order</span>
           </div>
           <div className="quick-action-btn" onClick={() => navigateTo('Purchasing', 'po_list')}>
             <span className="quick-action-btn-icon" style={{ color: 'var(--primary)' }}><FiClipboard /></span>
