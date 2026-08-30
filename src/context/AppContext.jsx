@@ -882,7 +882,12 @@ export const AppProvider = ({ children }) => {
   };
 
   // Inventory & Quality Actions
-  const addWaste = (materialId, qty, reason) => {
+  const addWaste = (
+    materialId,
+    qty,
+    reason,
+    { unitCostPrice, totalPrice, expiryDate, creationDate } = {},
+  ) => {
     const material = rawMaterials.find((rm) => rm.id === materialId);
     if (!material) return;
     if (material.stock < qty) {
@@ -890,15 +895,18 @@ export const AppProvider = ({ children }) => {
       return;
     }
 
-    const cost = Number((material.cost * qty).toFixed(2));
+    const cost = Number((totalPrice ?? material.cost * qty).toFixed(2));
     const newWaste = {
       id: `w_${Date.now()}`,
-      date: new Date().toISOString().split("T")[0],
+      date: creationDate || new Date().toISOString().split("T")[0],
       materialId,
       materialName: material.name,
       qty,
       unit: material.unit,
       reason,
+      unitCostPrice: unitCostPrice ?? material.cost,
+      totalPrice: cost,
+      expiryDate: expiryDate || null,
       cost,
       loggedBy: user ? user.name : "System",
     };
@@ -1269,47 +1277,193 @@ export const AppProvider = ({ children }) => {
     );
   };
 
-  // Create Purchase Order
-  const createPurchaseOrder = (supplierId, itemsList) => {
+  // Create direct purchase entry and add items to stock immediately
+  const createPurchaseOrder = (
+    supplierId,
+    itemsList,
+    purchaseDate = new Date().toISOString().split("T")[0],
+  ) => {
     const supplier = suppliers.find((s) => s.id === supplierId);
-    if (!supplier || itemsList.length === 0) return;
+    if (!supplier || !Array.isArray(itemsList) || itemsList.length === 0) {
+      showToast(
+        "Purchase Incomplete",
+        "Please select a supplier and add at least one material.",
+        "danger",
+      );
+      return null;
+    }
 
-    const formattedItems = itemsList.map((item) => {
-      const rm = rawMaterials.find((r) => r.id === item.id);
-      return {
-        id: item.id,
-        name: rm ? rm.name : "Unknown",
-        qty: Number(item.qty),
-        cost: rm ? rm.cost : 1.0,
-      };
-    });
+    const formattedItems = itemsList
+      .map((item) => {
+        const rm = rawMaterials.find((r) => r.id === item.id);
+        if (!rm) return null;
+
+        const qty = Number(item.qty);
+        const unitPrice = Number(item.unitPrice ?? rm.cost ?? 0);
+
+        if (!Number.isFinite(qty) || qty <= 0 || !Number.isFinite(unitPrice)) {
+          return null;
+        }
+
+        return {
+          id: item.id,
+          name: rm.name,
+          qty,
+          unit: rm.unit,
+          unitPrice,
+          total: Number((qty * unitPrice).toFixed(2)),
+        };
+      })
+      .filter(Boolean);
+
+    if (formattedItems.length === 0) {
+      showToast(
+        "Purchase Incomplete",
+        "Please add valid raw material quantities and prices.",
+        "danger",
+      );
+      return null;
+    }
 
     const totalAmount = formattedItems.reduce(
-      (acc, curr) => acc + curr.qty * curr.cost,
+      (acc, curr) => acc + Number(curr.total),
       0,
     );
-    const poNum = `PO-2026-${Math.floor(100 + Math.random() * 900)}`;
+    const poNum = `PUR-${Date.now().toString().slice(-6)}`;
+
+    setRawMaterials((prev) =>
+      prev.map((rm) => {
+        const purchasedItem = formattedItems.find((item) => item.id === rm.id);
+        if (!purchasedItem) return rm;
+
+        return {
+          ...rm,
+          stock: Number(rm.stock) + Number(purchasedItem.qty),
+          cost: Number(purchasedItem.unitPrice) || Number(rm.cost) || 0,
+        };
+      }),
+    );
 
     const newPO = {
       id: `po_${Date.now()}`,
       poNumber: poNum,
-      date: new Date().toISOString().split("T")[0],
+      date: purchaseDate,
       supplierId,
       supplierName: supplier.name,
       items: formattedItems,
       totalAmount: Number(totalAmount.toFixed(2)),
-      status: "Pending Approval",
-      deliveryDate: "",
+      status: "Completed",
+      deliveryDate: purchaseDate,
     };
 
     setPurchaseOrders((prev) => [newPO, ...prev]);
     logActivity(
       "purchase",
-      "PO Created",
-      `Purchase Order ${poNum} ($${totalAmount.toFixed(2)}) submitted for approval.`,
-      "badge-primary",
+      "Purchase Added to Stock",
+      `${poNum} completed for ${supplier.name}. Raw material stock updated.`,
+      "badge-success",
     );
-    showToast("PO Created", `Order ${poNum} created successfully.`, "success");
+    showToast(
+      "Purchase Completed",
+      `Purchase ${poNum} saved. Stock updated for ${formattedItems.length} material(s).`,
+      "success",
+    );
+
+    return newPO;
+  };
+
+  const updatePurchaseOrder = (
+    purchaseId,
+    supplierId,
+    itemsList,
+    purchaseDate,
+  ) => {
+    const existingPurchase = purchaseOrders.find((po) => po.id === purchaseId);
+    const supplier = suppliers.find((s) => s.id === supplierId);
+    if (
+      !existingPurchase ||
+      !supplier ||
+      !Array.isArray(itemsList) ||
+      !itemsList.length
+    ) {
+      return null;
+    }
+
+    const formattedItems = itemsList.map((item) => ({
+      id: item.id,
+      name: item.name,
+      qty: Number(item.qty),
+      unit: item.unit,
+      unitPrice: Number(item.unitPrice ?? item.cost ?? 0),
+      total: Number(
+        (Number(item.qty) * Number(item.unitPrice ?? item.cost ?? 0)).toFixed(
+          2,
+        ),
+      ),
+    }));
+    const totalAmount = formattedItems.reduce(
+      (sum, item) => sum + item.total,
+      0,
+    );
+
+    setRawMaterials((prev) =>
+      prev.map((rm) => {
+        const oldItem = existingPurchase.items.find(
+          (item) => item.id === rm.id,
+        );
+        const newItem = formattedItems.find((item) => item.id === rm.id);
+        return {
+          ...rm,
+          stock:
+            Number(rm.stock) -
+            Number(oldItem?.qty || 0) +
+            Number(newItem?.qty || 0),
+          ...(newItem ? { cost: newItem.unitPrice } : {}),
+        };
+      }),
+    );
+
+    const updatedPurchase = {
+      ...existingPurchase,
+      supplierId,
+      supplierName: supplier.name,
+      date: purchaseDate,
+      deliveryDate: purchaseDate,
+      items: formattedItems,
+      totalAmount: Number(totalAmount.toFixed(2)),
+    };
+    setPurchaseOrders((prev) =>
+      prev.map((po) => (po.id === purchaseId ? updatedPurchase : po)),
+    );
+    showToast(
+      "Purchase Updated",
+      `${existingPurchase.poNumber} was updated.`,
+      "success",
+    );
+    return updatedPurchase;
+  };
+
+  const deletePurchaseOrder = (purchaseId) => {
+    const purchase = purchaseOrders.find((po) => po.id === purchaseId);
+    if (!purchase) return false;
+
+    setRawMaterials((prev) =>
+      prev.map((rm) => {
+        const item = purchase.items.find(
+          (purchaseItem) => purchaseItem.id === rm.id,
+        );
+        return item
+          ? { ...rm, stock: Number(rm.stock) - Number(item.qty) }
+          : rm;
+      }),
+    );
+    setPurchaseOrders((prev) => prev.filter((po) => po.id !== purchaseId));
+    showToast(
+      "Purchase Deleted",
+      `${purchase.poNumber} was deleted and stock was reversed.`,
+      "success",
+    );
+    return true;
   };
 
   // Ship/Deliver Sales Order
@@ -1511,6 +1665,7 @@ export const AppProvider = ({ children }) => {
         currentShift,
         setCurrentShift,
         rawMaterials,
+        setRawMaterials,
         products,
         recipes,
         productionLogs,
@@ -1534,6 +1689,8 @@ export const AppProvider = ({ children }) => {
         receivePurchaseOrder,
         approvePurchaseOrder,
         createPurchaseOrder,
+        updatePurchaseOrder,
+        deletePurchaseOrder,
         deliverSalesOrder,
         createSalesOrder,
         addProduct,

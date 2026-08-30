@@ -2,7 +2,7 @@ import React, { useContext, useState } from "react";
 import { AppContext } from "../context/AppContext";
 import { Table } from "../components/Table";
 import { Modal } from "../components/Modal";
-import { FiPlus, FiCheck, FiTruck, FiShoppingBag } from "react-icons/fi";
+import { FiPlus, FiShoppingBag, FiEdit2, FiTrash2 } from "react-icons/fi";
 
 export const Purchasing = ({
   subActiveTab,
@@ -23,23 +23,20 @@ export const Purchasing = ({
     suppliers,
     rawMaterials,
     createPurchaseOrder,
-    approvePurchaseOrder,
-    receivePurchaseOrder,
+    updatePurchaseOrder,
+    deletePurchaseOrder,
   } = useContext(AppContext);
 
   const activeTab = subActiveTab || "orders";
   const setActiveTab = setSubActiveTab || (() => {});
 
-  // PO creation form state
+  // Purchase entry form state
   const [selectedSupplierId, setSelectedSupplierId] = useState("");
+  const [purchaseDate, setPurchaseDate] = useState(
+    () => new Date().toISOString().split("T")[0],
+  );
   const [itemsList, setItemsList] = useState([]);
-
-  // // New supplier form state
-  // const [newSupplierName, setNewSupplierName] = useState("");
-  // const [newSupplierContact, setNewSupplierContact] = useState("");
-  // const [newSupplierPhone, setNewSupplierPhone] = useState("");
-  // const [newSupplierAddress, setNewSupplierAddress] = useState("");
-  // const [newSupplierItems, setNewSupplierItems] = useState("");
+  const [editingPurchaseId, setEditingPurchaseId] = useState(null);
 
   // Company vendor creation form state
   const [companyVendorName, setCompanyVendorName] = useState("");
@@ -60,39 +57,66 @@ export const Purchasing = ({
   // New supplier choose form state
   const [newSupplierChooseType, setNewSupplierChooseType] = useState("");
 
-  // Select material to add to current PO
+  // Select material to add to current purchase
   const [currRmId, setCurrRmId] = useState("");
   const [currQty, setCurrQty] = useState("");
+  const [currUnitPrice, setCurrUnitPrice] = useState("");
 
   const addMaterialToPO = () => {
-    if (!currRmId || !currQty || Number(currQty) <= 0) return;
+    if (!currRmId || !currQty || Number(currQty) <= 0) {
+      alert("Please select a valid material and quantity.");
+      return;
+    }
+
+    if (!currUnitPrice || Number(currUnitPrice) < 0) {
+      alert("Please enter a valid unit price.");
+      return;
+    }
+
     const material = rawMaterials.find((r) => r.id === currRmId);
     if (!material) return;
 
-    // Check if item already exists
-    if (itemsList.some((item) => item.id === currRmId)) {
-      setItemsList((prev) =>
-        prev.map((item) => {
-          if (item.id === currRmId) {
-            return { ...item, qty: Number(item.qty) + Number(currQty) };
-          }
-          return item;
-        }),
-      );
-    } else {
-      setItemsList((prev) => [
+    const qty = Number(currQty);
+    const unitPrice = Number(currUnitPrice);
+
+    setItemsList((prev) => {
+      const existing = prev.find((item) => item.id === currRmId);
+      if (existing) {
+        return prev.map((item) => {
+          if (item.id !== currRmId) return item;
+          return {
+            ...item,
+            qty: Number(item.qty) + qty,
+            unitPrice,
+          };
+        });
+      }
+
+      return [
         ...prev,
-        { id: currRmId, name: material.name, qty: Number(currQty) },
-      ]);
-    }
+        {
+          id: currRmId,
+          name: material.name,
+          qty,
+          unit: material.unit,
+          unitPrice,
+        },
+      ];
+    });
 
     setCurrRmId("");
     setCurrQty("");
+    setCurrUnitPrice("");
   };
 
   const removeItemFromPO = (id) => {
     setItemsList((prev) => prev.filter((item) => item.id !== id));
   };
+
+  const subtotal = itemsList.reduce(
+    (sum, item) => sum + Number(item.qty) * Number(item.unitPrice || 0),
+    0,
+  );
 
   const handlePOSubmit = (e) => {
     e.preventDefault();
@@ -101,10 +125,21 @@ export const Purchasing = ({
       return;
     }
 
-    createPurchaseOrder(selectedSupplierId, itemsList);
+    const savedPurchase = editingPurchaseId
+      ? updatePurchaseOrder(
+          editingPurchaseId,
+          selectedSupplierId,
+          itemsList,
+          purchaseDate,
+        )
+      : createPurchaseOrder(selectedSupplierId, itemsList, purchaseDate);
+    if (!savedPurchase) return;
+
     setIsWizardOpen(false);
     setSelectedSupplierId("");
+    setPurchaseDate(new Date().toISOString().split("T")[0]);
     setItemsList([]);
+    setEditingPurchaseId(null);
   };
 
   const handleNewSupplierSubmit = (e) => {
@@ -148,6 +183,37 @@ export const Purchasing = ({
     }
   };
 
+  const handleEditPurchase = (purchaseId) => {
+    const purchase = purchaseOrders.find((po) => po.id === purchaseId);
+    if (!purchase) return;
+
+    setSelectedSupplierId(purchase.supplierId);
+    setPurchaseDate(purchase.date);
+    setItemsList(
+      purchase.items.map((item) => ({
+        id: item.id,
+        name: item.name,
+        qty: item.qty,
+        unit: item.unit,
+        unitPrice: item.unitPrice ?? item.cost ?? 0,
+      })),
+    );
+    setEditingPurchaseId(purchaseId);
+    setIsWizardOpen(true);
+  };
+
+  const handleDeletePurchase = (purchaseId) => {
+    const purchase = purchaseOrders.find((po) => po.id === purchaseId);
+    if (!purchase) return;
+
+    const confirmed = window.confirm(
+      `Delete purchase ${purchase.poNumber}? Stock will be reversed.`,
+    );
+    if (!confirmed) return;
+
+    deletePurchaseOrder(purchaseId);
+  };
+
   const poColumns = [
     { header: "PO Date", accessor: "date", sortable: true },
     { header: "PO Number", accessor: "poNumber", sortable: true },
@@ -163,7 +229,8 @@ export const Purchasing = ({
               style={{ fontSize: "11px", color: "var(--text-muted)" }}
             >
               • {item.name}: {item.qty} pcs ($
-              {(item.cost * item.qty).toFixed(2)})
+              {(Number(item.unitPrice ?? item.cost ?? 0) * item.qty).toFixed(2)}
+              )
             </span>
           ))}
         </div>
@@ -174,49 +241,26 @@ export const Purchasing = ({
       accessor: "totalAmount",
       cell: (row) => <strong>${row.totalAmount.toFixed(2)}</strong>,
     },
-    // {
-    //   header: "Status",
-    //   accessor: "status",
-    //   sortable: true,
-    //   cell: (row) => {
-    //     if (row.status === "Received")
-    //       return <span className="badge badge-success">Received</span>;
-    //     if (row.status === "Ordered")
-    //       return <span className="badge badge-primary">Ordered</span>;
-    //     return <span className="badge badge-warning">Pending Approval</span>;
-    //   },
-    // },
-    // {
-    //   header: "Actions",
-    //   accessor: "id",
-    //   cell: (row) => {
-    //     if (row.status === "Pending Approval") {
-    //       return (
-    //         <button
-    //           className="btn btn-success btn-sm"
-    //           onClick={() => approvePurchaseOrder(row.id)}
-    //         >
-    //           <FiCheck /> Approve
-    //         </button>
-    //       );
-    //     }
-    //     if (row.status === "Ordered") {
-    //       return (
-    //         <button
-    //           className="btn btn-primary btn-sm"
-    //           onClick={() => receivePurchaseOrder(row.id)}
-    //         >
-    //           <FiTruck /> Receive Goods
-    //         </button>
-    //       );
-    //     }
-    //     return (
-    //       <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>
-    //         Received ({row.deliveryDate})
-    //       </span>
-    //     );
-    //   },
-    // },
+    {
+      header: "Action",
+      accessor: "id",
+      cell: (row) => (
+        <div style={{ display: "flex", gap: "8px" }}>
+          <button
+            className="btn btn-secondary btn-sm"
+            onClick={() => handleEditPurchase(row.id)}
+          >
+            <FiEdit2 /> Edit
+          </button>
+          <button
+            className="btn btn-danger btn-sm"
+            onClick={() => handleDeletePurchase(row.id)}
+          >
+            <FiTrash2 /> Delete
+          </button>
+        </div>
+      ),
+    },
   ];
 
   const supplierColumns = [
@@ -252,7 +296,7 @@ export const Purchasing = ({
             className={`tab-btn ${activeTab === "orders" ? "active" : ""}`}
             onClick={() => setActiveTab("orders")}
           >
-            Purchase Orders
+            Purchase Products
           </button>
           <button
             className={`tab-btn ${activeTab === "suppliers" ? "active" : ""}`}
@@ -268,15 +312,18 @@ export const Purchasing = ({
           title="Procurement Operations Log"
           columns={poColumns}
           data={purchaseOrders}
-          filterField="status"
-          filterLabel="Status"
-          filterOptions={["Pending Approval", "Ordered", "Received"]}
           actions={
             <button
               className="btn btn-primary btn-sm"
-              onClick={() => setIsWizardOpen(true)}
+              onClick={() => {
+                setEditingPurchaseId(null);
+                setSelectedSupplierId("");
+                setPurchaseDate(new Date().toISOString().split("T")[0]);
+                setItemsList([]);
+                setIsWizardOpen(true);
+              }}
             >
-              <FiShoppingBag /> Raise New Purchase Order
+              <FiShoppingBag /> Add New Purchase
             </button>
           }
         />
@@ -495,17 +542,25 @@ export const Purchasing = ({
       <Modal
         isOpen={isWizardOpen}
         onClose={() => setIsWizardOpen(false)}
-        title="Raise New Purchase Order"
+        title="Add New Purchase"
         footer={
           <>
             <button
               className="btn btn-secondary"
-              onClick={() => setIsWizardOpen(false)}
+              onClick={() => {
+                setIsWizardOpen(false);
+                setEditingPurchaseId(null);
+                setItemsList([]);
+              }}
             >
               Cancel
             </button>
-            <button className="btn btn-primary" onClick={handlePOSubmit}>
-              Submit PO
+            <button
+              className="btn btn-primary"
+              onClick={handlePOSubmit}
+              disabled={itemsList.length === 0 || !selectedSupplierId}
+            >
+              Add to Stock
             </button>
           </>
         }
@@ -513,8 +568,7 @@ export const Purchasing = ({
         <form onSubmit={handlePOSubmit}>
           <div className="form-group">
             <label className="form-label">
-              Select Material Supplier{" "}
-              <span className="required-indicator">*</span>
+              Supplier <span className="required-indicator">*</span>
             </label>
             <select
               className="form-control"
@@ -529,6 +583,16 @@ export const Purchasing = ({
                 </option>
               ))}
             </select>
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">Purchase Date</label>
+            <input
+              type="date"
+              className="form-control"
+              value={purchaseDate}
+              onChange={(e) => setPurchaseDate(e.target.value)}
+            />
           </div>
 
           <div
@@ -553,7 +617,7 @@ export const Purchasing = ({
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "1.5fr 1fr auto",
+                gridTemplateColumns: "1.5fr 1fr 1fr auto",
                 gap: "10px",
                 alignItems: "flex-end",
               }}
@@ -571,7 +635,7 @@ export const Purchasing = ({
                   <option value="">-- Choose --</option>
                   {rawMaterials.map((rm) => (
                     <option key={rm.id} value={rm.id}>
-                      {rm.name} (${rm.cost}/{rm.unit})
+                      {rm.name} ({rm.unit})
                     </option>
                   ))}
                 </select>
@@ -592,6 +656,22 @@ export const Purchasing = ({
                 />
               </div>
 
+              <div className="form-group" style={{ margin: 0 }}>
+                <label className="form-label" style={{ fontSize: "11px" }}>
+                  Unit Price
+                </label>
+                <input
+                  type="number"
+                  className="form-control"
+                  style={{ padding: "6px 10px", fontSize: "12px" }}
+                  placeholder="e.g. 250"
+                  min="0"
+                  step="0.01"
+                  value={currUnitPrice}
+                  onChange={(e) => setCurrUnitPrice(e.target.value)}
+                />
+              </div>
+
               <button
                 type="button"
                 className="btn btn-secondary btn-sm"
@@ -601,7 +681,6 @@ export const Purchasing = ({
               </button>
             </div>
 
-            {/* List of items in current PO draft */}
             {itemsList.length > 0 && (
               <div style={{ marginTop: "16px" }}>
                 <table
@@ -620,7 +699,9 @@ export const Purchasing = ({
                       }}
                     >
                       <th style={{ padding: "4px" }}>Material</th>
-                      <th style={{ padding: "4px" }}>Qty Requested</th>
+                      <th style={{ padding: "4px" }}>Qty</th>
+                      <th style={{ padding: "4px" }}>Unit Price</th>
+                      <th style={{ padding: "4px" }}>Total</th>
                       <th style={{ padding: "4px", textAlign: "right" }}>
                         Action
                       </th>
@@ -635,7 +716,19 @@ export const Purchasing = ({
                         }}
                       >
                         <td style={{ padding: "6px 4px" }}>{item.name}</td>
-                        <td style={{ padding: "6px 4px" }}>{item.qty} units</td>
+                        <td style={{ padding: "6px 4px" }}>
+                          {item.qty} {item.unit}
+                        </td>
+                        <td style={{ padding: "6px 4px" }}>
+                          ${Number(item.unitPrice || 0).toFixed(2)}
+                        </td>
+                        <td style={{ padding: "6px 4px" }}>
+                          $
+                          {(
+                            (Number(item.qty) || 0) *
+                            (Number(item.unitPrice) || 0)
+                          ).toFixed(2)}
+                        </td>
                         <td style={{ padding: "6px 4px", textAlign: "right" }}>
                           <button
                             type="button"
@@ -655,6 +748,17 @@ export const Purchasing = ({
                     ))}
                   </tbody>
                 </table>
+
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "flex-end",
+                    marginTop: "12px",
+                    fontWeight: 700,
+                  }}
+                >
+                  Total: ${subtotal.toFixed(2)}
+                </div>
               </div>
             )}
           </div>

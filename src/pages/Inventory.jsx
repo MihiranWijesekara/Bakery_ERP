@@ -2,7 +2,7 @@ import React, { useContext, useState } from "react";
 import { AppContext } from "../context/AppContext";
 import { Table } from "../components/Table";
 import { Modal } from "../components/Modal";
-import { FiPlus, FiAlertTriangle, FiTrash2 } from "react-icons/fi";
+import { FiPlus, FiAlertTriangle, FiTrash2, FiEdit2 } from "react-icons/fi";
 
 export const Inventory = ({
   subActiveTab,
@@ -10,26 +10,45 @@ export const Inventory = ({
   isProductModalOpen,
   setIsProductModalOpen,
 }) => {
-  const { rawMaterials, wasteLogs, addWaste, addProduct, productionLogs } =
-    useContext(AppContext);
+  const {
+    rawMaterials,
+    setRawMaterials,
+    wasteLogs,
+    addWaste,
+    addProduct,
+    productionLogs,
+    purchaseOrders,
+  } = useContext(AppContext);
 
   const activeTab = subActiveTab || "materials";
   const setActiveTab = setSubActiveTab || (() => {});
 
   const [isWasteModalOpen, setIsWasteModalOpen] = useState(false);
+  const [isMaterialModalOpen, setIsMaterialModalOpen] = useState(false);
   const [isProductModalOpenLocal, setIsProductModalOpenLocal] = useState(false);
   const [prodName, setProdName] = useState("");
   const [prodCategory, setProdCategory] = useState("Buns");
   const [prodPrice, setProdPrice] = useState("");
   const [prodSku, setProdSku] = useState("");
   const [prodStock, setProdStock] = useState("0");
+  const [newMaterialName, setNewMaterialName] = useState("");
+  const [newMaterialUnit, setNewMaterialUnit] = useState("kg");
+  const [newMaterialMinStock, setNewMaterialMinStock] = useState("0");
 
   const productModalOpen = isProductModalOpen ?? isProductModalOpenLocal;
   const setProductModalOpen =
     setIsProductModalOpen ?? setIsProductModalOpenLocal;
-  const [wasteRmId, setWasteRmId] = useState("");
-  const [wasteQty, setWasteQty] = useState("");
+  const [rawMaterial, setRawMaterial] = useState("");
+  const [totalQuantity, setTotalQuantity] = useState("");
+  const [unitCostPrice, setUnitCostPrice] = useState("");
+  const [totalPrice, setTotalPrice] = useState("");
+  const [expiryDate, setExpiryDate] = useState("");
+  const [creationDate, setCreationDate] = useState(
+    () => new Date().toISOString().split("T")[0],
+  );
   const [wasteReason, setWasteReason] = useState("Expired");
+  const selectedMaterial = rawMaterials.find((rm) => rm.id === rawMaterial);
+  const quantityStep = selectedMaterial?.unit === "pcs" ? "1" : "0.01";
   const displayedIngredients = rawMaterials.filter((material) =>
     [
       "rm_flour",
@@ -41,24 +60,117 @@ export const Inventory = ({
     ].includes(material.id),
   );
 
+  const handleEditMaterial = (materialId) => {
+    const material = rawMaterials.find((rm) => rm.id === materialId);
+    if (!material) return;
+
+    const updatedName = window.prompt("Edit material name:", material.name);
+    if (updatedName === null) return;
+
+    const trimmedName = updatedName.trim();
+    if (!trimmedName) return;
+
+    setRawMaterials((prev) =>
+      prev.map((rm) =>
+        rm.id === materialId ? { ...rm, name: trimmedName } : rm,
+      ),
+    );
+  };
+
+  const handleDeleteMaterial = (materialId) => {
+    const material = rawMaterials.find((rm) => rm.id === materialId);
+    if (!material) return;
+
+    const confirmed = window.confirm(
+      `Delete ${material.name} from raw materials?`,
+    );
+    if (!confirmed) return;
+
+    setRawMaterials((prev) => prev.filter((rm) => rm.id !== materialId));
+  };
+
   // Submit Waste Form
   const handleWasteSubmit = (e) => {
     e.preventDefault();
-    if (!wasteRmId || !wasteQty || Number(wasteQty) <= 0) {
+    if (
+      !rawMaterial ||
+      !totalQuantity ||
+      Number(totalQuantity) <= 0 ||
+      !unitCostPrice ||
+      Number(unitCostPrice) <= 0 ||
+      !totalPrice ||
+      Number(totalPrice) <= 0
+    ) {
       alert("Please fill all required fields correctly.");
       return;
     }
-    addWaste(wasteRmId, Number(wasteQty), wasteReason);
+    addWaste(rawMaterial, Number(totalQuantity), wasteReason, {
+      unitCostPrice: Number(unitCostPrice),
+      totalPrice: Number(totalPrice),
+      expiryDate: expiryDate || null,
+      creationDate,
+    });
     setIsWasteModalOpen(false);
-    setWasteRmId("");
-    setWasteQty("");
+    setRawMaterial("");
+    setTotalQuantity("");
+    setUnitCostPrice("");
+    setTotalPrice("");
+    setExpiryDate("");
+    setCreationDate(new Date().toISOString().split("T")[0]);
     setWasteReason("Expired");
+  };
+
+  const handleCreateMaterial = (e) => {
+    e.preventDefault();
+
+    const trimmedName = newMaterialName.trim();
+    const parsedMinStock = Number(newMaterialMinStock);
+    const normalizedUnit = newMaterialUnit.trim();
+
+    if (!trimmedName || !normalizedUnit || !Number.isFinite(parsedMinStock)) {
+      alert("Please fill in all required fields correctly.");
+      return;
+    }
+
+    if (parsedMinStock < 0) {
+      alert("Minimum stock level cannot be negative.");
+      return;
+    }
+
+    const nameExists = rawMaterials.some(
+      (rm) => rm.name.toLowerCase() === trimmedName.toLowerCase(),
+    );
+
+    if (nameExists) {
+      alert("A raw material with this name already exists.");
+      return;
+    }
+
+    const materialId = `rm_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+
+    setRawMaterials((prev) => [
+      {
+        id: materialId,
+        name: trimmedName,
+        stock: 0,
+        unit: normalizedUnit,
+        minStock: parsedMinStock,
+        cost: 0,
+        category: "Custom",
+        expiryDate: null,
+      },
+      ...prev,
+    ]);
+
+    setIsMaterialModalOpen(false);
+    setNewMaterialName("");
+    setNewMaterialUnit("kg");
+    setNewMaterialMinStock("0");
   };
 
   // 1. Raw Materials Table Setup
   const materialColumns = [
     { header: "Material Name", accessor: "name", sortable: true },
-    { header: "Category", accessor: "category", sortable: true },
     {
       header: "Stock Level",
       accessor: "stock",
@@ -82,40 +194,65 @@ export const Inventory = ({
     {
       header: "Cost per Unit",
       accessor: "cost",
-      cell: (row) => `$${row.cost.toFixed(2)}`,
+      cell: (row) => `$${Number(row.cost || 0).toFixed(2)}`,
     },
-    { header: "Expiry Date", accessor: "expiryDate", sortable: true },
     {
-      header: "Status",
+      header: "Total Price",
+      accessor: "totalPrice",
+      cell: (row) => `$${((row.stock || 0) * (row.cost || 0)).toFixed(2)}`,
+    },
+    {
+      header: "Action",
       accessor: "id",
-      cell: (row) => {
-        const isLow = row.stock < row.minStock && row.stock > 0;
-        const isOut = row.stock === 0;
-        const exp = new Date(row.expiryDate);
-        const daysLeft = (exp - new Date()) / (1000 * 60 * 60 * 24);
-        const isSoonExpiring = daysLeft >= 0 && daysLeft <= 7;
-
-        if (isOut)
-          return <span className="badge badge-danger">Out of Stock</span>;
-        if (isSoonExpiring)
-          return (
-            <span
-              className="badge badge-danger"
-              style={{ backgroundColor: "rgba(239, 68, 68, 0.15)" }}
-            >
-              Expiring Soon
-            </span>
-          );
-        if (isLow)
-          return <span className="badge badge-warning">Low Stock</span>;
-        return <span className="badge badge-success">Healthy</span>;
-      },
+      cell: (row) => (
+        <div style={{ display: "flex", gap: "8px" }}>
+          <button
+            className="btn btn-secondary btn-sm"
+            onClick={() => handleEditMaterial(row.id)}
+          >
+            <FiEdit2 /> Edit
+          </button>
+          <button
+            className="btn btn-danger btn-sm"
+            onClick={() => handleDeleteMaterial(row.id)}
+          >
+            <FiTrash2 /> Delete
+          </button>
+        </div>
+      ),
     },
   ];
 
   // 2. Finished Goods Table Setup
   const productColumns = [
-    { header: "Product Name", accessor: "name", sortable: true },
+    { header: "Material Name", accessor: "name", sortable: true },
+    { header: "UNIT", accessor: "unit", sortable: true },
+    {
+      header: "Min Stock Level",
+      accessor: "minStock",
+      sortable: true,
+      cell: (row) => `${row.minStock} ${row.unit}`,
+    },
+    {
+      header: "Action",
+      accessor: "id",
+      cell: (row) => (
+        <div style={{ display: "flex", gap: "8px" }}>
+          <button
+            className="btn btn-secondary btn-sm"
+            onClick={() => handleEditMaterial(row.id)}
+          >
+            <FiEdit2 /> Edit
+          </button>
+          <button
+            className="btn btn-danger btn-sm"
+            onClick={() => handleDeleteMaterial(row.id)}
+          >
+            <FiTrash2 /> Delete
+          </button>
+        </div>
+      ),
+    },
   ];
 
   // 3. Waste Logs Table Setup
@@ -134,9 +271,152 @@ export const Inventory = ({
       cell: (row) => `$${row.cost.toFixed(2)}`,
     },
     { header: "Logged By", accessor: "loggedBy" },
+    {
+      header: "Action",
+      accessor: "id",
+      cell: (row) => (
+        <div style={{ display: "flex", gap: "8px" }}>
+          <button
+            className="btn btn-secondary btn-sm"
+            onClick={() => handleEditMaterial(row.id)}
+          >
+            <FiEdit2 /> Edit
+          </button>
+          <button
+            className="btn btn-danger btn-sm"
+            onClick={() => handleDeleteMaterial(row.id)}
+          >
+            <FiTrash2 /> Delete
+          </button>
+        </div>
+      ),
+    },
   ];
 
-  // 4. Variance Reporting Calculation
+  // 4. Daily Raw Materials Transactions (IN / OUT)
+  const dailyTransactionData = React.useMemo(() => {
+    const transactions = [];
+    const materialCostMap = new Map(rawMaterials.map((rm) => [rm.id, rm.cost]));
+
+    purchaseOrders.forEach((po) => {
+      po.items.forEach((item, index) => {
+        const unitPrice = Number(item.unitPrice ?? item.cost ?? 0);
+        const qty = Number(item.qty || 0);
+        transactions.push({
+          id: `txn_po_${po.id}_${item.id}_${index}`,
+          date: po.date,
+          materialName: item.name,
+          direction: "IN",
+          qty,
+          unit: item.unit,
+          unitPrice,
+          totalPrice: Number((qty * unitPrice).toFixed(2)),
+          source: "Purchase",
+          reference: po.poNumber,
+        });
+      });
+    });
+
+    productionLogs.forEach((run) => {
+      run.actualMaterials.forEach((material, index) => {
+        const unitPrice = Number(materialCostMap.get(material.id) || 0);
+        const qty = Number(material.qty || 0);
+        transactions.push({
+          id: `txn_pr_${run.id}_${material.id}_${index}`,
+          date: run.date,
+          materialName: material.name,
+          direction: "OUT",
+          qty,
+          unit: material.unit,
+          unitPrice,
+          totalPrice: Number((qty * unitPrice).toFixed(2)),
+          source: "Production",
+          reference: run.id,
+        });
+      });
+    });
+
+    wasteLogs.forEach((log) => {
+      const qty = Number(log.qty || 0);
+      const unitPrice = Number(
+        log.unitCostPrice ?? (qty > 0 ? Number(log.cost || 0) / qty : 0),
+      );
+      transactions.push({
+        id: `txn_waste_${log.id}`,
+        date: log.date,
+        materialName: log.materialName,
+        direction: "OUT",
+        qty,
+        unit: log.unit,
+        unitPrice,
+        totalPrice: Number((qty * unitPrice).toFixed(2)),
+        source: "Waste",
+        reference: log.reason,
+      });
+    });
+
+    return transactions.sort((a, b) => b.date.localeCompare(a.date));
+  }, [purchaseOrders, productionLogs, wasteLogs, rawMaterials]);
+
+  const transactionColumns = [
+    { header: "Date", accessor: "date", sortable: true },
+    { header: "Material", accessor: "materialName", sortable: true },
+    {
+      header: "Type",
+      accessor: "direction",
+      sortable: true,
+      cell: (row) => (
+        <span
+          className={`badge ${row.direction === "IN" ? "badge-success" : "badge-danger"}`}
+        >
+          {row.direction}
+        </span>
+      ),
+    },
+    {
+      header: "Quantity",
+      accessor: "qty",
+      sortable: true,
+      cell: (row) => `${row.qty} ${row.unit}`,
+    },
+    {
+      header: "Unit Cost",
+      accessor: "unitPrice",
+      sortable: true,
+      cell: (row) => `$${Number(row.unitPrice || 0).toFixed(2)}`,
+    },
+    {
+      header: "Total Value",
+      accessor: "totalPrice",
+      sortable: true,
+      cell: (row) =>
+        `${row.direction === "OUT" ? "-" : "+"}$${Number(row.totalPrice || 0).toFixed(2)}`,
+    },
+
+    // add the edit and delete button in this area
+    {
+      header: "Action",
+      accessor: "id",
+      cell: (row) => (
+        <div style={{ display: "flex", gap: "8px" }}>
+          <button
+            className="btn btn-secondary btn-sm"
+            onClick={() => handleEditMaterial(row.id)}
+          >
+            <FiEdit2 /> Edit
+          </button>
+          <button
+            className="btn btn-danger btn-sm"
+            onClick={() => handleDeleteMaterial(row.id)}
+          >
+            <FiTrash2 /> Delete
+          </button>
+        </div>
+      ),
+    },
+  ];
+
+  // 5. Variance Reporting Calculation
   const varianceData = React.useMemo(() => {
     const list = [];
     productionLogs
@@ -217,6 +497,12 @@ export const Inventory = ({
             Raw Materials Stock
           </button>
           <button
+            className={`tab-btn ${activeTab === "transactions" ? "active" : ""}`}
+            onClick={() => setActiveTab("transactions")}
+          >
+            Daily Raw Materials Transactions
+          </button>
+          <button
             className={`tab-btn ${activeTab === "products" ? "active" : ""}`}
             onClick={() => setActiveTab("products")}
           >
@@ -268,17 +554,18 @@ export const Inventory = ({
           title="Raw Materials Master Stock"
           columns={materialColumns}
           data={rawMaterials}
-          filterField="category"
-          filterLabel="Category"
-          filterOptions={["Dry Ingredients", "Chilled", "Liquids", "Fillings"]}
-          actions={
-            <button
-              className="btn btn-primary btn-sm"
-              onClick={() => setIsWasteModalOpen(true)}
-            >
-              <FiTrash2 /> Register Spoilage / Waste
-            </button>
-          }
+        />
+      )}
+
+      {activeTab === "transactions" && (
+        <Table
+          title="Daily Raw Materials Transactions"
+          columns={transactionColumns}
+          data={dailyTransactionData}
+          filterField="direction"
+          filterLabel="Transaction Type"
+          filterOptions={["IN", "OUT"]}
+          searchPlaceholder="Search material, source, or reference..."
         />
       )}
 
@@ -287,9 +574,14 @@ export const Inventory = ({
           title="Raw Materials (Ingredients)"
           columns={productColumns}
           data={displayedIngredients}
-          filterField="category"
-          filterLabel="Category"
-          filterOptions={["Dry Ingredients", "Fillings", "Chilled"]}
+          actions={
+            <button
+              className="btn btn-primary btn-sm"
+              onClick={() => setIsMaterialModalOpen(true)}
+            >
+              <FiPlus /> Add New Raw Material
+            </button>
+          }
         />
       )}
 
@@ -321,11 +613,80 @@ export const Inventory = ({
         />
       )}
 
+      {/* Add Raw Material Modal */}
+      <Modal
+        isOpen={isMaterialModalOpen}
+        onClose={() => setIsMaterialModalOpen(false)}
+        title="Add New Raw Material"
+        footer={
+          <>
+            <button
+              className="btn btn-secondary"
+              onClick={() => setIsMaterialModalOpen(false)}
+            >
+              Cancel
+            </button>
+            <button className="btn btn-blue" onClick={handleCreateMaterial}>
+              Save Material
+            </button>
+          </>
+        }
+      >
+        <form onSubmit={handleCreateMaterial}>
+          <div className="form-group">
+            <label className="form-label">
+              Material Name <span className="required-indicator">*</span>
+            </label>
+            <input
+              type="text"
+              className="form-control"
+              value={newMaterialName}
+              onChange={(e) => setNewMaterialName(e.target.value)}
+              placeholder="e.g. Wheat Flour"
+              required
+            />
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">
+              Unit <span className="required-indicator">*</span>
+            </label>
+            <select
+              className="form-control"
+              value={newMaterialUnit}
+              onChange={(e) => setNewMaterialUnit(e.target.value)}
+              required
+            >
+              <option value="kg">kg</option>
+              <option value="L">L</option>
+              <option value="pcs">pcs</option>
+              <option value="boxes">boxes</option>
+              <option value="bags">bags</option>
+            </select>
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">
+              Min Stock Level <span className="required-indicator">*</span>
+            </label>
+            <input
+              type="number"
+              className="form-control"
+              min="0"
+              step="0.01"
+              value={newMaterialMinStock}
+              onChange={(e) => setNewMaterialMinStock(e.target.value)}
+              required
+            />
+          </div>
+        </form>
+      </Modal>
+
       {/* Waste Registration Modal */}
       <Modal
         isOpen={isWasteModalOpen}
         onClose={() => setIsWasteModalOpen(false)}
-        title="Record Ingredient Waste"
+        title="Record Waste"
         footer={
           <>
             <button
@@ -335,7 +696,7 @@ export const Inventory = ({
               Cancel
             </button>
             <button className="btn btn-danger" onClick={handleWasteSubmit}>
-              Save Log
+              Save Waste
             </button>
           </>
         }
@@ -343,12 +704,12 @@ export const Inventory = ({
         <form onSubmit={handleWasteSubmit}>
           <div className="form-group">
             <label className="form-label">
-              Select Raw Material <span className="required-indicator">*</span>
+              Material <span className="required-indicator">*</span>
             </label>
             <select
               className="form-control"
-              value={wasteRmId}
-              onChange={(e) => setWasteRmId(e.target.value)}
+              value={rawMaterial}
+              onChange={(e) => setRawMaterial(e.target.value)}
               required
             >
               <option value="">-- Choose Material --</option>
@@ -362,23 +723,24 @@ export const Inventory = ({
 
           <div className="form-group">
             <label className="form-label">
-              Quantity to Discard <span className="required-indicator">*</span>
+              Quantity Discarded ({selectedMaterial?.unit || "unit"}){" "}
+              <span className="required-indicator">*</span>
             </label>
             <input
               type="number"
               className="form-control"
-              placeholder="e.g. 5.5"
-              step="0.01"
-              min="0.01"
-              value={wasteQty}
-              onChange={(e) => setWasteQty(e.target.value)}
+              placeholder={`e.g. ${selectedMaterial?.unit === "pcs" ? "6" : "5.5"}`}
+              step={quantityStep}
+              min={quantityStep}
+              value={totalQuantity}
+              onChange={(e) => setTotalQuantity(e.target.value)}
               required
             />
           </div>
 
           <div className="form-group">
             <label className="form-label">
-              Reason for Spoilage <span className="required-indicator">*</span>
+              Reason <span className="required-indicator">*</span>
             </label>
             <select
               className="form-control"
@@ -386,10 +748,10 @@ export const Inventory = ({
               onChange={(e) => setWasteReason(e.target.value)}
               required
             >
-              <option value="Expired">Expired Inventory</option>
-              <option value="Damaged">Damaged in Handling</option>
-              <option value="Spilled">Mixing / Hopper Spillage</option>
-              <option value="Dough Spoiled">Dough Batch Spoiled</option>
+              <option value="Expired">Expired</option>
+              <option value="Damaged">Damaged</option>
+              <option value="Spilled">Spilled</option>
+              <option value="Dough Spoiled">Dough Spoiled</option>
             </select>
           </div>
         </form>
