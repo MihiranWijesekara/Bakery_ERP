@@ -938,6 +938,57 @@ export const AppProvider = ({ children }) => {
     );
   };
 
+  const updateWasteLog = (wasteId, changes) => {
+    const existingWaste = wasteLogs.find((log) => log.id === wasteId);
+    if (!existingWaste) return false;
+    const nextQty = Number(changes.qty);
+    const material = rawMaterials.find(
+      (rm) => rm.id === (changes.materialId || existingWaste.materialId),
+    );
+    if (!material || !Number.isFinite(nextQty) || nextQty <= 0) return false;
+
+    const stockDelta = Number(existingWaste.qty) - nextQty;
+    if (Number(material.stock) + stockDelta < 0) {
+      showToast("Error", `Insufficient stock for ${material.name}.`, "danger");
+      return false;
+    }
+
+    const unitCostPrice = Number(
+      changes.unitCostPrice ?? existingWaste.unitCostPrice ?? material.cost,
+    );
+    const totalPrice = Number(changes.totalPrice ?? nextQty * unitCostPrice);
+    setWasteLogs((prev) =>
+      prev.map((log) =>
+        log.id === wasteId
+          ? {
+              ...log,
+              ...changes,
+              materialId: material.id,
+              materialName: material.name,
+              unit: material.unit,
+              qty: nextQty,
+              unitCostPrice,
+              totalPrice: Number(totalPrice.toFixed(2)),
+              cost: Number(totalPrice.toFixed(2)),
+            }
+          : log,
+      ),
+    );
+    setRawMaterials((prev) =>
+      prev.map((rm) =>
+        rm.id === material.id
+          ? { ...rm, stock: Number((rm.stock + stockDelta).toFixed(2)) }
+          : rm,
+      ),
+    );
+    showToast(
+      "Waste Updated",
+      "The waste log and stock were updated.",
+      "success",
+    );
+    return true;
+  };
+
   // Low stock alert generator
   const triggerLowStockAlert = (name, stockVal, unit) => {
     const alertId = `not_${Date.now()}`;
@@ -1050,6 +1101,62 @@ export const AppProvider = ({ children }) => {
       "success",
     );
     return prId;
+  };
+
+  const updateProductionLog = (productionId, changes) => {
+    const existingProduction = productionLogs.find(
+      (log) => log.id === productionId,
+    );
+    if (!existingProduction) return false;
+
+    const nextActualMaterials =
+      changes.actualMaterials || existingProduction.actualMaterials;
+    const stockDeltas = new Map();
+    existingProduction.actualMaterials.forEach((material) => {
+      stockDeltas.set(
+        material.id,
+        (stockDeltas.get(material.id) || 0) + Number(material.qty),
+      );
+    });
+    nextActualMaterials.forEach((material) => {
+      stockDeltas.set(
+        material.id,
+        (stockDeltas.get(material.id) || 0) - Number(material.qty),
+      );
+    });
+
+    if (
+      rawMaterials.some(
+        (rm) => Number(rm.stock) + (stockDeltas.get(rm.id) || 0) < 0,
+      )
+    ) {
+      showToast(
+        "Error",
+        "The edited production usage exceeds available stock.",
+        "danger",
+      );
+      return false;
+    }
+
+    setRawMaterials((prev) =>
+      prev.map((rm) => ({
+        ...rm,
+        stock: Number((rm.stock + (stockDeltas.get(rm.id) || 0)).toFixed(2)),
+      })),
+    );
+    setProductionLogs((prev) =>
+      prev.map((log) =>
+        log.id === productionId
+          ? { ...log, ...changes, actualMaterials: nextActualMaterials }
+          : log,
+      ),
+    );
+    showToast(
+      "Production Updated",
+      "The production usage was updated.",
+      "success",
+    );
+    return true;
   };
 
   // Complete Production order with QC inspection details
@@ -1682,7 +1789,9 @@ export const AppProvider = ({ children }) => {
         removeToast,
         logActivity,
         addWaste,
+        updateWasteLog,
         createProductionEntry,
+        updateProductionLog,
         completeProductionQC,
         addQualityLog,
         updateQualityLogStatus,

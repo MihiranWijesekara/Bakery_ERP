@@ -19,10 +19,13 @@ export const Table = ({
   filterField,
   filterOptions = [],
   filterLabel = "Filter",
+  dateFilterField,
 }) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [sortConfig, setSortConfig] = useState({ key: null, direction: "asc" });
   const [selectedFilter, setSelectedFilter] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [selectedRows, setSelectedRows] = useState(new Set());
@@ -46,6 +49,17 @@ export const Table = ({
         const val = item[filterField];
         return (
           val && val.toString().toLowerCase() === selectedFilter.toLowerCase()
+        );
+      });
+    }
+
+    // Apply inclusive date range filter to ISO date values.
+    if (dateFilterField && (dateFrom || dateTo)) {
+      result = result.filter((item) => {
+        const itemDate = item[dateFilterField];
+        if (!itemDate) return false;
+        return (
+          (!dateFrom || itemDate >= dateFrom) && (!dateTo || itemDate <= dateTo)
         );
       });
     }
@@ -80,7 +94,17 @@ export const Table = ({
     }
 
     return result;
-  }, [data, columns, searchQuery, sortConfig, selectedFilter, filterField]);
+  }, [
+    data,
+    columns,
+    searchQuery,
+    sortConfig,
+    selectedFilter,
+    filterField,
+    dateFilterField,
+    dateFrom,
+    dateTo,
+  ]);
 
   // Pagination Logic
   const totalItems = processedData.length;
@@ -94,7 +118,7 @@ export const Table = ({
   React.useEffect(() => {
     setCurrentPage(1);
     setSelectedRows(new Set());
-  }, [searchQuery, selectedFilter]);
+  }, [searchQuery, selectedFilter, dateFrom, dateTo]);
 
   // Bulk selection handlers
   const handleSelectAll = () => {
@@ -184,6 +208,32 @@ export const Table = ({
                 </option>
               ))}
             </select>
+          )}
+
+          {dateFilterField && (
+            <div className="table-date-range" aria-label="Date range filter">
+              <span className="table-date-range-label">Date range</span>
+              <label className="table-date-filter">
+                <span>From</span>
+                <input
+                  type="date"
+                  className="table-date-input"
+                  value={dateFrom}
+                  onChange={(e) => setDateFrom(e.target.value)}
+                  aria-label={`${filterLabel} from date`}
+                />
+              </label>
+              <label className="table-date-filter">
+                <span>To</span>
+                <input
+                  type="date"
+                  className="table-date-input"
+                  value={dateTo}
+                  onChange={(e) => setDateTo(e.target.value)}
+                  aria-label={`${filterLabel} to date`}
+                />
+              </label>
+            </div>
           )}
 
           {/* Export Button */}

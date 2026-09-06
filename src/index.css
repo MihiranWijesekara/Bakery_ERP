@@ -821,6 +821,7 @@ body {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-wrap: wrap;
 }
 
 .table-search {
@@ -849,6 +850,54 @@ body {
   top: 50%;
   transform: translateY(-50%);
   color: var(--text-muted);
+}
+
+.table-date-range {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px 4px 10px;
+  border: 1px solid var(--surface-border);
+  border-radius: var(--border-radius-sm);
+  background: var(--surface);
+}
+
+.table-date-range-label {
+  margin-right: 2px;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.table-date-filter {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.table-date-input {
+  width: 126px;
+  min-height: 32px;
+  padding: 6px 8px;
+  border: 1px solid var(--surface-border);
+  border-radius: 6px;
+  background: var(--background);
+  color: var(--text-main);
+  font: inherit;
+  font-size: 12px;
+  outline: none;
+}
+
+.table-date-input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 14%, transparent);
 }
 
 .table-wrapper {
@@ -2003,6 +2052,33 @@ body[data-theme='dark'] .sidebar {
   .modal-footer {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .table-actions {
+    width: 100%;
+  }
+
+  .table-search,
+  .table-date-range,
+  .table-actions > .btn {
+    width: 100%;
+  }
+
+  .table-date-range {
+    box-sizing: border-box;
+    flex-wrap: wrap;
+  }
+
+  .table-date-range-label {
+    width: 100%;
+  }
+
+  .table-date-filter {
+    flex: 1 1 140px;
+  }
+
+  .table-date-input {
+    width: 100%;
   }
 
   .navbar-right {

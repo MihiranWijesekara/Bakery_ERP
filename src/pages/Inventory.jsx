@@ -15,6 +15,9 @@ export const Inventory = ({
     setRawMaterials,
     wasteLogs,
     addWaste,
+    updateWasteLog,
+    updateProductionLog,
+    updatePurchaseOrder,
     addProduct,
     productionLogs,
     purchaseOrders,
@@ -34,6 +37,9 @@ export const Inventory = ({
   const [newMaterialName, setNewMaterialName] = useState("");
   const [newMaterialUnit, setNewMaterialUnit] = useState("kg");
   const [newMaterialMinStock, setNewMaterialMinStock] = useState("0");
+  const [editingRecord, setEditingRecord] = useState(null);
+  const [editType, setEditType] = useState("");
+  const [editForm, setEditForm] = useState({});
 
   const productModalOpen = isProductModalOpen ?? isProductModalOpenLocal;
   const setProductModalOpen =
@@ -47,6 +53,7 @@ export const Inventory = ({
     () => new Date().toISOString().split("T")[0],
   );
   const [wasteReason, setWasteReason] = useState("Expired");
+  const [otherWasteReason, setOtherWasteReason] = useState("");
   const selectedMaterial = rawMaterials.find((rm) => rm.id === rawMaterial);
   const quantityStep = selectedMaterial?.unit === "pcs" ? "1" : "0.01";
   const displayedIngredients = rawMaterials.filter((material) =>
@@ -60,21 +67,110 @@ export const Inventory = ({
     ].includes(material.id),
   );
 
-  const handleEditMaterial = (materialId) => {
+  const openMaterialEditor = (materialId) => {
     const material = rawMaterials.find((rm) => rm.id === materialId);
     if (!material) return;
+    setEditType("material");
+    setEditingRecord(material);
+    setEditForm({ ...material });
+  };
 
-    const updatedName = window.prompt("Edit material name:", material.name);
-    if (updatedName === null) return;
+  const openEditor = (type, record) => {
+    setEditType(type);
+    setEditingRecord(record);
+    setEditForm({ ...record });
+  };
 
-    const trimmedName = updatedName.trim();
-    if (!trimmedName) return;
+  const closeEditor = () => {
+    setEditingRecord(null);
+    setEditType("");
+    setEditForm({});
+  };
 
-    setRawMaterials((prev) =>
-      prev.map((rm) =>
-        rm.id === materialId ? { ...rm, name: trimmedName } : rm,
-      ),
-    );
+  const handleEditSubmit = (e) => {
+    e.preventDefault();
+    const form = editForm;
+    if (editType === "material") {
+      const name = String(form.name || "").trim();
+      const stock = Number(form.stock);
+      const minStock = Number(form.minStock);
+      const cost = Number(form.cost);
+      if (!name || stock < 0 || minStock < 0 || cost < 0) return;
+      setRawMaterials((prev) =>
+        prev.map((rm) =>
+          rm.id === editingRecord.id
+            ? { ...rm, name, stock, minStock, cost, unit: form.unit }
+            : rm,
+        ),
+      );
+    } else if (editType === "purchase") {
+      const purchase = purchaseOrders.find(
+        (po) => po.id === editingRecord.sourceId,
+      );
+      if (!purchase) return;
+      const items = purchase.items.map((item, index) =>
+        index === editingRecord.itemIndex
+          ? {
+              ...item,
+              qty: Number(form.qty),
+              unitPrice: Number(form.unitPrice),
+            }
+          : item,
+      );
+      const updated = updatePurchaseOrder(
+        purchase.id,
+        purchase.supplierId,
+        items,
+        form.date,
+      );
+      if (!updated) return;
+    } else if (editType === "waste") {
+      if (
+        !updateWasteLog(editingRecord.id, {
+          date: form.date,
+          qty: Number(form.qty),
+          reason: form.reason,
+          unitCostPrice: Number(form.unitCostPrice),
+          totalPrice: Number(form.totalPrice),
+        })
+      )
+        return;
+    } else if (editType === "production" || editType === "variance") {
+      const production = productionLogs.find(
+        (log) =>
+          log.id === editingRecord.batchId || log.id === editingRecord.sourceId,
+      );
+      if (!production) return;
+      const hasMaterial = production.actualMaterials.some(
+        (material) => material.id === editingRecord.materialId,
+      );
+      const actualMaterials = production.actualMaterials
+        .map((material) =>
+          material.id === editingRecord.materialId
+            ? { ...material, qty: Number(form.qty) }
+            : material,
+        )
+        .concat(
+          hasMaterial
+            ? []
+            : [
+                {
+                  id: editingRecord.materialId,
+                  name: editingRecord.material,
+                  qty: Number(form.qty),
+                  unit: editingRecord.unit || "kg",
+                },
+              ],
+        );
+      if (
+        !updateProductionLog(production.id, {
+          date: form.date,
+          actualMaterials,
+        })
+      )
+        return;
+    }
+    closeEditor();
   };
 
   const handleDeleteMaterial = (materialId) => {
@@ -92,6 +188,8 @@ export const Inventory = ({
   // Submit Waste Form
   const handleWasteSubmit = (e) => {
     e.preventDefault();
+    const reason =
+      wasteReason === "Other" ? otherWasteReason.trim() : wasteReason;
     if (
       !rawMaterial ||
       !totalQuantity ||
@@ -99,12 +197,13 @@ export const Inventory = ({
       !unitCostPrice ||
       Number(unitCostPrice) <= 0 ||
       !totalPrice ||
-      Number(totalPrice) <= 0
+      Number(totalPrice) <= 0 ||
+      !reason
     ) {
       alert("Please fill all required fields correctly.");
       return;
     }
-    addWaste(rawMaterial, Number(totalQuantity), wasteReason, {
+    addWaste(rawMaterial, Number(totalQuantity), reason, {
       unitCostPrice: Number(unitCostPrice),
       totalPrice: Number(totalPrice),
       expiryDate: expiryDate || null,
@@ -118,6 +217,7 @@ export const Inventory = ({
     setExpiryDate("");
     setCreationDate(new Date().toISOString().split("T")[0]);
     setWasteReason("Expired");
+    setOtherWasteReason("");
   };
 
   const handleCreateMaterial = (e) => {
@@ -208,7 +308,7 @@ export const Inventory = ({
         <div style={{ display: "flex", gap: "8px" }}>
           <button
             className="btn btn-secondary btn-sm"
-            onClick={() => handleEditMaterial(row.id)}
+            onClick={() => openMaterialEditor(row.id)}
           >
             <FiEdit2 /> Edit
           </button>
@@ -240,7 +340,7 @@ export const Inventory = ({
         <div style={{ display: "flex", gap: "8px" }}>
           <button
             className="btn btn-secondary btn-sm"
-            onClick={() => handleEditMaterial(row.id)}
+            onClick={() => openMaterialEditor(row.id)}
           >
             <FiEdit2 /> Edit
           </button>
@@ -278,7 +378,7 @@ export const Inventory = ({
         <div style={{ display: "flex", gap: "8px" }}>
           <button
             className="btn btn-secondary btn-sm"
-            onClick={() => handleEditMaterial(row.id)}
+            onClick={() => openEditor("waste", row)}
           >
             <FiEdit2 /> Edit
           </button>
@@ -313,6 +413,8 @@ export const Inventory = ({
           totalPrice: Number((qty * unitPrice).toFixed(2)),
           source: "Purchase",
           reference: po.poNumber,
+          sourceId: po.id,
+          itemIndex: index,
         });
       });
     });
@@ -332,6 +434,8 @@ export const Inventory = ({
           totalPrice: Number((qty * unitPrice).toFixed(2)),
           source: "Production",
           reference: run.id,
+          sourceId: run.id,
+          materialId: material.id,
         });
       });
     });
@@ -352,6 +456,7 @@ export const Inventory = ({
         totalPrice: Number((qty * unitPrice).toFixed(2)),
         source: "Waste",
         reference: log.reason,
+        sourceId: log.id,
       });
     });
 
@@ -401,7 +506,12 @@ export const Inventory = ({
         <div style={{ display: "flex", gap: "8px" }}>
           <button
             className="btn btn-secondary btn-sm"
-            onClick={() => handleEditMaterial(row.id)}
+            onClick={() =>
+              openEditor(
+                row.source === "Purchase" ? "purchase" : "production",
+                row,
+              )
+            }
           >
             <FiEdit2 /> Edit
           </button>
@@ -433,6 +543,9 @@ export const Inventory = ({
             batchId: run.id,
             product: run.productName,
             material: exp.name,
+            materialId: exp.id,
+            sourceId: run.id,
+            qty: Number(act.qty || 0),
             expected: `${exp.qty} ${exp.unit}`,
             actual: `${act.qty} ${exp.unit}`,
             varianceVal: diff,
@@ -452,15 +565,10 @@ export const Inventory = ({
 
   const varianceColumns = [
     { header: "Production Date", accessor: "date", sortable: true },
-    {
-      header: "Batch ID",
-      accessor: "batchId",
-      cell: (row) => <strong>#{row.batchId.substring(3, 8)}</strong>,
-    },
-    { header: "Product Produced", accessor: "product", sortable: true },
-    { header: "Ingredient", accessor: "material", sortable: true },
-    { header: "Recipe Formula", accessor: "expected" },
+
+    { header: "Raw Material", accessor: "material", sortable: true },
     { header: "Actual Consumption", accessor: "actual" },
+    { header: "Expected Consumption", accessor: "expected" },
     {
       header: "Difference (Variance)",
       accessor: "varianceVal",
@@ -565,6 +673,7 @@ export const Inventory = ({
           filterField="direction"
           filterLabel="Transaction Type"
           filterOptions={["IN", "OUT"]}
+          dateFilterField="date"
           searchPlaceholder="Search material, source, or reference..."
         />
       )}
@@ -593,6 +702,7 @@ export const Inventory = ({
           filterField="reason"
           filterLabel="Reason"
           filterOptions={["Expired", "Damaged", "Spilled", "Dough Spoiled"]}
+          dateFilterField="date"
           actions={
             <button
               className="btn btn-danger btn-sm"
@@ -609,9 +719,190 @@ export const Inventory = ({
           title="Consumption Comparison Variance Report"
           columns={varianceColumns}
           data={varianceData}
+          dateFilterField="date"
           searchPlaceholder="Search products or ingredients..."
         />
       )}
+
+      <Modal
+        isOpen={Boolean(editingRecord)}
+        onClose={closeEditor}
+        title={`Edit ${editType === "material" ? "Raw Material" : editType === "purchase" ? "Purchase Transaction" : editType === "waste" ? "Waste Log" : "Production Consumption"}`}
+        footer={
+          <>
+            <button className="btn btn-secondary" onClick={closeEditor}>
+              Cancel
+            </button>
+            <button className="btn btn-primary" onClick={handleEditSubmit}>
+              Save Changes
+            </button>
+          </>
+        }
+      >
+        {editingRecord && (
+          <form onSubmit={handleEditSubmit}>
+            {editType === "material" && (
+              <>
+                <div className="form-group">
+                  <label className="form-label">Material Name</label>
+                  <input
+                    className="form-control"
+                    value={editForm.name || ""}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, name: e.target.value })
+                    }
+                    required
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Stock</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    className="form-control"
+                    value={editForm.stock ?? ""}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, stock: e.target.value })
+                    }
+                    required
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Minimum Stock</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    className="form-control"
+                    value={editForm.minStock ?? ""}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, minStock: e.target.value })
+                    }
+                    required
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Cost per Unit</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    className="form-control"
+                    value={editForm.cost ?? ""}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, cost: e.target.value })
+                    }
+                    required
+                  />
+                </div>
+              </>
+            )}
+            {(editType === "purchase" ||
+              editType === "production" ||
+              editType === "variance" ||
+              editType === "waste") && (
+              <div className="form-group">
+                <label className="form-label">Date</label>
+                <input
+                  type="date"
+                  className="form-control"
+                  value={editForm.date || ""}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, date: e.target.value })
+                  }
+                  required
+                />
+              </div>
+            )}
+            {(editType === "purchase" ||
+              editType === "production" ||
+              editType === "variance" ||
+              editType === "waste") && (
+              <div className="form-group">
+                <label className="form-label">Quantity</label>
+                <input
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  className="form-control"
+                  value={editForm.qty ?? ""}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, qty: e.target.value })
+                  }
+                  required
+                />
+              </div>
+            )}
+            {editType === "purchase" && (
+              <div className="form-group">
+                <label className="form-label">Unit Cost</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  className="form-control"
+                  value={editForm.unitPrice ?? ""}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, unitPrice: e.target.value })
+                  }
+                  required
+                />
+              </div>
+            )}
+            {editType === "waste" && (
+              <>
+                <div className="form-group">
+                  <label className="form-label">Reason</label>
+                  <select
+                    className="form-control"
+                    value={editForm.reason || ""}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, reason: e.target.value })
+                    }
+                  >
+                    <option>Expired</option>
+                    <option>Damaged</option>
+                    <option>Spilled</option>
+                    <option>Dough Spoiled</option>
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Unit Cost</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    className="form-control"
+                    value={editForm.unitCostPrice ?? ""}
+                    onChange={(e) =>
+                      setEditForm({
+                        ...editForm,
+                        unitCostPrice: e.target.value,
+                      })
+                    }
+                    required
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Total Loss</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    className="form-control"
+                    value={editForm.totalPrice ?? editForm.cost ?? ""}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, totalPrice: e.target.value })
+                    }
+                    required
+                  />
+                </div>
+              </>
+            )}
+          </form>
+        )}
+      </Modal>
 
       {/* Add Raw Material Modal */}
       <Modal
@@ -752,7 +1043,54 @@ export const Inventory = ({
               <option value="Damaged">Damaged</option>
               <option value="Spilled">Spilled</option>
               <option value="Dough Spoiled">Dough Spoiled</option>
+              <option value="Other">Other</option>
             </select>
+          </div>
+
+          {wasteReason === "Other" && (
+            <div className="form-group">
+              <label className="form-label">
+                Reason Details <span className="required-indicator">*</span>
+              </label>
+              <input
+                type="text"
+                className="form-control"
+                placeholder="Enter the waste reason"
+                value={otherWasteReason}
+                onChange={(e) => setOtherWasteReason(e.target.value)}
+                required
+              />
+            </div>
+          )}
+
+          <div className="form-group">
+            <label className="form-label">
+              Unit Cost Price <span className="required-indicator">*</span>
+            </label>
+            <input
+              type="number"
+              className="form-control"
+              min="0.01"
+              step="0.01"
+              value={unitCostPrice}
+              onChange={(e) => setUnitCostPrice(e.target.value)}
+              required
+            />
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">
+              Total Loss Cost <span className="required-indicator">*</span>
+            </label>
+            <input
+              type="number"
+              className="form-control"
+              min="0.01"
+              step="0.01"
+              value={totalPrice}
+              onChange={(e) => setTotalPrice(e.target.value)}
+              required
+            />
           </div>
         </form>
       </Modal>
